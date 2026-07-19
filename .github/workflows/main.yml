@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - master
-  workflow_dispatch: # Bu satır manuel çalıştırma butonu ekler!
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -21,3 +21,4 @@ jobs:
         username: ${{ secrets.FTP_USERNAME }}
         password: ${{ secrets.FTP_PASSWORD }}
         protocol: ftp
+        server-dir: /
