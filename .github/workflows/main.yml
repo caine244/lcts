@@ -3,7 +3,9 @@ name: Deploy to Bunny.net
 on:
   push:
     branches:
-      - master # Eğer ana dalınız 'master' ise burayı 'master' olarak değiştirin.
+      - main
+      - master
+  workflow_dispatch: # Bu satır manuel çalıştırma butonu ekler!
 
 jobs:
   deploy:
