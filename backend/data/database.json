@@ -3,10 +3,10 @@
   "payments": [],
   "users": [
     {
-      "username": "admin",
+      "username": "arda",
       "name": "ELECTUS Yönetici",
       "role": "admin",
-      "password": "1234"
+      "password": "293364"
     }
   ],
   "settings": {

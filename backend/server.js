@@ -18,7 +18,7 @@ app.use(express.static(path.join(rootDir)));
 const defaultData = {
   transactions: [],
   payments: [],
-  users: [{ username: 'admin', name: 'ELECTUS Yönetici', role: 'admin', password: '1234' }],
+  users: [{ username: 'arda', name: 'ELECTUS Yönetici', role: 'admin', password: '293364' }],
   settings: {
     eurRate: 53.44,
     usdRate: 46.0,
