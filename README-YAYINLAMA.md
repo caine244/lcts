@@ -23,4 +23,4 @@ HTTPS üzerinden açıldığında uygulama desteklenen tarayıcılarda telefona/
 - Kullanıcı adı: `admin`
 - Şifre: `1234`
 
-İlk girişten sonra yönetici şifresini Ayarlar bölümünden değiştirin.
+İlk girişten sonra yönetici şifresini Ayarlar bölümünden değiştirin.  
