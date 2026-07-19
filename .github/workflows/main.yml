@@ -3,7 +3,7 @@ name: Deploy to Bunny.net
 on:
   push:
     branches:
-      - main # Eğer ana dalınız 'master' ise burayı 'master' olarak değiştirin.
+      - master # Eğer ana dalınız 'master' ise burayı 'master' olarak değiştirin.
 
 jobs:
   deploy:
