@@ -1,0 +1,21 @@
+name: Deploy to Bunny.net
+
+on:
+  push:
+    branches:
+      - main # Eğer ana dalınız 'master' ise burayı 'master' olarak değiştirin.
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Kodu Kopyala
+      uses: actions/checkout@v3
+
+    - name: Bunny.net Storage'a Yükle (FTP)
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: storage.bunnycdn.com
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        protocol: ftp
