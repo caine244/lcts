@@ -336,6 +336,36 @@ function inferReportGroup(t){
   if(t.type==="Gelir"){if(x.includes("nirvana"))return "Nirvana";if(x.includes("iban"))return "IBAN Geliri";return "Electus / Mera";}
   if(x.includes("redot"))return "Redot";if(x.includes("kredi"))return "Kredi";if(x.includes("eleman")||x.includes("maaş")||x.includes("personel"))return "Eleman";if(x.includes("reklam"))return "Reklam";return "Diğer";
 }
+function mergeByKey(remoteList, localList, keyFn){
+  const out = new Map();
+  (Array.isArray(remoteList) ? remoteList : []).forEach(item => {
+    const key = keyFn(item);
+    if(key !== null && key !== undefined){
+      out.set(String(key), structuredClone(item));
+    }
+  });
+  (Array.isArray(localList) ? localList : []).forEach(item => {
+    const key = keyFn(item);
+    if(key !== null && key !== undefined){
+      out.set(String(key), structuredClone(item));
+    }
+  });
+  return [...out.values()];
+}
+function mergeDataForSave(remoteData, localData){
+  const remote = remoteData && typeof remoteData === 'object' ? remoteData : structuredClone(defaultData);
+  const local = localData && typeof localData === 'object' ? localData : structuredClone(defaultData);
+  const merged = deepMerge(structuredClone(remote), local);
+  merged.transactions = mergeByKey(remote.transactions, local.transactions, x => x?.id);
+  merged.payments = mergeByKey(remote.payments, local.payments, x => x?.id);
+  merged.users = mergeByKey(remote.users, local.users, x => x?.username);
+  merged.audit = mergeByKey(remote.audit, local.audit, x => x?.id)
+    .sort((a,b)=>String(b?.date||'').localeCompare(String(a?.date||'')))
+    .slice(0, 500);
+  merged.meta = { ...(remote.meta||{}), ...(local.meta||{}) };
+  merged.meta.version = Math.max(Number(remote?.meta?.version)||0, Number(local?.meta?.version)||0, 13);
+  return merged;
+}
 function normalizeData(){
   data.transactions ||= []; data.payments ||= []; data.users ||= structuredClone(defaultData.users); data.settings={...structuredClone(defaultData.settings),...(data.settings||{})}; data.settings.notifiedPayments ||= {}; data.audit ||= []; data.meta={...structuredClone(defaultData.meta),...(data.meta||{})}; data.meta.version=13;
   data.transactions.forEach(t=>{t.currency=t.currency||"TRY";t.reportGroup=t.reportGroup||inferReportGroup(t);t.exchangeRate=Number(t.exchangeRate)||0;});
@@ -359,7 +389,8 @@ async function saveToBackend(value){
   }
 }
 async function persist(){
-  const snapshot=structuredClone(data);
+  const remoteSnapshot = await loadFromBackend();
+  const snapshot=mergeDataForSave(remoteSnapshot, data);
   const saved=await saveToBackend(snapshot);
   if(!saved){
     if(!syncErrorNotified){
@@ -368,6 +399,8 @@ async function persist(){
     }
     return false;
   }
+  data = snapshot;
+  normalizeData();
   syncErrorNotified = false;
   return saved;
 }
