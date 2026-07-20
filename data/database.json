@@ -1,0 +1,28 @@
+{
+  "transactions": [],
+  "payments": [],
+  "users": [
+    {
+      "username": "arda",
+      "name": "ELECTUS Yönetici",
+      "role": "admin",
+      "password": "293364"
+    }
+  ],
+  "settings": {
+    "eurRate": 53.44,
+    "usdRate": 46,
+    "baseCurrency": "TRY",
+    "autoRates": true,
+    "lastRateUpdate": null,
+    "rateSource": "Frankfurter",
+    "paymentNotifications": true,
+    "notifyDaysBefore": 0,
+    "notifiedPayments": {}
+  },
+  "audit": [],
+  "meta": {
+    "version": 12,
+    "lastBackup": null
+  }
+}
