@@ -338,6 +338,21 @@ function inferReportGroup(t){
   if(t.type==="Gelir"){if(x.includes("nirvana"))return "Nirvana";if(x.includes("iban"))return "IBAN Geliri";return "Electus / Mera";}
   if(x.includes("redot"))return "Redot";if(x.includes("kredi"))return "Kredi";if(x.includes("eleman")||x.includes("maaş")||x.includes("personel"))return "Eleman";if(x.includes("reklam"))return "Reklam";return "Diğer";
 }
+function deepMerge(target, source){
+  if(Array.isArray(source)) return source;
+  if(source && typeof source === 'object'){
+    const result = Array.isArray(target) ? [] : { ...(target || {}) };
+    for(const [key, value] of Object.entries(source)){
+      if(value && typeof value === 'object' && !Array.isArray(value) && result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])){
+        result[key] = deepMerge(result[key], value);
+      } else {
+        result[key] = structuredClone(value);
+      }
+    }
+    return result;
+  }
+  return source ?? target;
+}
 function mergeByKey(remoteList, localList, keyFn){
   const out = new Map();
   (Array.isArray(remoteList) ? remoteList : []).forEach(item => {
@@ -425,8 +440,13 @@ async function persist(){
   }
 }
 async function save(){
-  const ok = await persist();
-  if(ok){renderAll();}
+  try{
+    const ok = await persist();
+    if(ok){renderAll();}
+  }catch(error){
+    console.error('Kaydetme hatasi', error);
+    alert('Veri kaydedilirken beklenmeyen bir hata oldu. Lütfen tekrar deneyin.');
+  }
 }
 async function refreshFromBackendAndRender(){
   const backendData = await loadFromBackend();
