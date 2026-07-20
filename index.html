@@ -315,7 +315,8 @@ function getApiBaseUrl(){
   if(configured){return configured.replace(/\/$/,"");}
   if(location.protocol==='file:'){return 'http://localhost:3000';}
   if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){return 'http://localhost:3000';}
-  return 'https://lcts-backend.onrender.com';
+  if(location.hostname.endsWith('.onrender.com')){return location.origin;}
+  return 'https://lcts-1.onrender.com';
 }
 function apiUrl(path){
   const base=getApiBaseUrl();
