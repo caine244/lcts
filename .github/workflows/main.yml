@@ -11,14 +11,23 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - name: Kodu Kopyala
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Bunny.net Storage'a Yükle (FTP)
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-      with:
-        server: storage.bunnycdn.com
-        username: ${{ secrets.FTP_USERNAME }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        protocol: ftp
-        server-dir: /
+      - name: Deploy to Bunny.net Storage
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: storage.bunnycdn.com
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          passive: true
+          server-dir: /
+          local-dir: ./
+          state-name: .ftp-deploy-sync-state.json
+          exclude: |
+            **/.git*/
+            **/.github*/
+            **/node_modules/**
+            backend/**
