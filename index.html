@@ -314,7 +314,7 @@ function getApiBaseUrl(){
   const configured=(window.ELECTUS_BACKEND_URL||"").trim();
   if(configured){return configured.replace(/\/$/,"");}
   if(location.protocol==='file:'){return 'http://localhost:3000';}
-  return '';
+  return 'https://lcts.onrender.com';
 }
 function apiUrl(path){
   const base=getApiBaseUrl();
