@@ -26,3 +26,9 @@ jobs:
 
       - name: Syntax check backend
         run: node --check backend/server.js
+
+      - name: Install backend dependencies
+        run: npm --prefix backend install --omit=dev
+
+      - name: Syntax check backend
+        run: node --check backend/server.js
