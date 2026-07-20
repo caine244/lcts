@@ -11,9 +11,29 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const dataPath = path.join(rootDir, 'backend', 'data', 'database.json');
 
-app.use(cors());
+app.disable('etag');
+app.use(cors({ origin: true, credentials: true }));
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(path.join(rootDir)));
+app.use(express.static(path.join(rootDir), {
+  maxAge: 0,
+  etag: false,
+  lastModified: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.json')) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    }
+  }
+}));
 
 const defaultData = {
   transactions: [],

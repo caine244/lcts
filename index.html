@@ -314,11 +314,25 @@ function getApiBaseUrl(){
   const configured=(window.ELECTUS_BACKEND_URL||"").trim();
   if(configured){return configured.replace(/\/$/,"");}
   if(location.protocol==='file:'){return 'http://localhost:3000';}
-  return 'https://lcts.onrender.com';
+  if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){return 'http://localhost:3000';}
+  return 'https://lcts-backend.onrender.com';
 }
 function apiUrl(path){
   const base=getApiBaseUrl();
   return base ? `${base}${path}` : path;
+}
+async function apiFetch(path, options={}){
+  const target=apiUrl(path);
+  const headers=options.headers?{...options.headers}:{};
+  if(options.body && !(options.body instanceof FormData) && !headers['Content-Type']){
+    headers['Content-Type']='application/json';
+  }
+  const response=await fetch(target,{...options,headers,cache:'no-store'});
+  const text=await response.text();
+  let payload=null;
+  try{payload=text?JSON.parse(text):null;}catch(error){payload=text;}
+  if(!response.ok){throw new Error(payload?.error||payload?.message||'İstek başarısız');}
+  return payload;
 }
 
 function inferReportGroup(t){
@@ -332,34 +346,31 @@ function normalizeData(){
   data.payments.forEach(p=>{p.currency=p.currency||"TRY";p.exchangeRate=Number(p.exchangeRate)||0;p.status=p.status||"Bekliyor";p.reportGroup=p.reportGroup||((p.type==="Tahsilat")?"Electus / Mera":"Diğer");});
 }
 async function loadFromBackend(){
-  const target=apiUrl('/api/data');
   try{
-    const res=await fetch(target,{cache:'no-store'});
-    if(!res.ok)throw new Error('Backend yanıtı hatalı');
-    const payload=await res.json();
-    return payload;
+    return await apiFetch('/api/data');
   }catch(e){
     console.warn('Backend veri yüklenemedi:',e);
     return null;
   }
 }
 async function saveToBackend(value){
-  const target=apiUrl('/api/data');
-  if(!target) return;
   try{
-    const res = await fetch(target,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
-    if(!res.ok)throw new Error('Backend veri kaydedilemedi');
+    await apiFetch('/api/data',{method:'POST',body:JSON.stringify(value)});
+    return true;
   }catch(e){
     console.warn('Backend veri kaydedilemedi:',e);
+    return false;
   }
 }
-function persist(){
-  localStorage.setItem("electusData",JSON.stringify(data));
+async function persist(){
+  const snapshot=structuredClone(data);
+  const saved=await saveToBackend(snapshot);
+  localStorage.setItem("electusData",JSON.stringify(snapshot));
   localStorage.removeItem("finoraData");
-  saveToIndexedDB(data);
-  if(navigator.onLine) saveToBackend(data);
+  await saveToIndexedDB(snapshot);
+  return saved;
 }
-function save(){persist();renderAll();}
+async function save(){await persist();renderAll();}
 async function initializeData(){
   const backendData = await loadFromBackend();
   const dbData = await loadFromIndexedDB();
@@ -367,7 +378,7 @@ async function initializeData(){
     data = backendData;
     normalizeData();
     localStorage.setItem("electusData",JSON.stringify(data));
-    saveToIndexedDB(data);
+    await saveToIndexedDB(data);
   } else if(dbData && typeof dbData === 'object'){
     data = dbData;
     normalizeData();
