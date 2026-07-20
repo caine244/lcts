@@ -44,6 +44,24 @@ function ensureDataFile() {
   }
 }
 
+function deepMerge(target, source) {
+  if (Array.isArray(source)) {
+    return source;
+  }
+  if (source && typeof source === 'object') {
+    const result = Array.isArray(target) ? [] : { ...(target || {}) };
+    for (const [key, value] of Object.entries(source)) {
+      if (value && typeof value === 'object' && !Array.isArray(value) && result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])) {
+        result[key] = deepMerge(result[key], value);
+      } else {
+        result[key] = structuredClone(value);
+      }
+    }
+    return result;
+  }
+  return source ?? target;
+}
+
 function loadData() {
   ensureDataFile();
   try {
@@ -56,7 +74,9 @@ function loadData() {
 }
 
 function saveData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2), 'utf8');
+  const tempPath = `${dataPath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tempPath, dataPath);
 }
 
 app.get('/api/status', (req, res) => {
@@ -68,8 +88,8 @@ app.get('/api/data', (req, res) => {
 });
 
 app.post('/api/data', (req, res) => {
-  const payload = req.body;
-  const data = { ...defaultData, ...payload };
+  const payload = req.body || {};
+  const data = deepMerge(structuredClone(defaultData), payload);
   saveData(data);
   res.json({ success: true, data });
 });
@@ -141,6 +161,7 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`ELECTUS backend çalışıyor: http://localhost:${PORT}`);
+  console.log(`Ağ üzerinden erişim için: http://0.0.0.0:${PORT}`);
 });

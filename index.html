@@ -310,6 +310,16 @@ const fmt=n=>new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY",maxi
 const fmtCurrency=(n,c="TRY")=>new Intl.NumberFormat("tr-TR",{style:"currency",currency:c,minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
 const tlValue=(obj, fallbackRate=0)=>{const c=obj.currency||"TRY",a=Number(obj.amount)||0;if(c==="EUR")return a*(Number(obj.exchangeRate)||fallbackRate||Number(data?.settings?.eurRate)||0);if(c==="USD")return a*(Number(obj.exchangeRate)||Number(data?.settings?.usdRate)||0);return a;};
 const uid=()=>Date.now()+Math.floor(Math.random()*10000);
+function getApiBaseUrl(){
+  const configured=(window.ELECTUS_BACKEND_URL||"").trim();
+  if(configured){return configured.replace(/\/$/,"");}
+  if(location.protocol==='file:'){return 'http://localhost:3000';}
+  return '';
+}
+function apiUrl(path){
+  const base=getApiBaseUrl();
+  return base ? `${base}${path}` : path;
+}
 
 function inferReportGroup(t){
   const x=((t.category||"")+" "+(t.description||"")).toLocaleLowerCase("tr-TR");
@@ -322,8 +332,9 @@ function normalizeData(){
   data.payments.forEach(p=>{p.currency=p.currency||"TRY";p.exchangeRate=Number(p.exchangeRate)||0;p.status=p.status||"Bekliyor";p.reportGroup=p.reportGroup||((p.type==="Tahsilat")?"Electus / Mera":"Diğer");});
 }
 async function loadFromBackend(){
+  const target=apiUrl('/api/data');
   try{
-    const res=await fetch('/api/data',{cache:'no-store'});
+    const res=await fetch(target,{cache:'no-store'});
     if(!res.ok)throw new Error('Backend yanıtı hatalı');
     const payload=await res.json();
     return payload;
@@ -333,8 +344,10 @@ async function loadFromBackend(){
   }
 }
 async function saveToBackend(value){
+  const target=apiUrl('/api/data');
+  if(!target) return;
   try{
-    const res = await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
+    const res = await fetch(target,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
     if(!res.ok)throw new Error('Backend veri kaydedilemedi');
   }catch(e){
     console.warn('Backend veri kaydedilemedi:',e);
