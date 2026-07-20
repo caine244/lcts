@@ -287,7 +287,7 @@
   </main>
 </div>
 
-<div id="loginScreen" class="login-screen"><div class="login-card"><div class="login-logo">E</div><h1>ELECTUS Finance</h1><p>Finans yönetim paneline giriş yapın.</p><div><label>Kullanıcı adı</label><input id="loginUser" value="arda" autocomplete="username"></div><div style="margin-top:12px"><label>Şifre</label><input id="loginPass" type="password" value="293364" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"></div><button class="btn primary" style="width:100%;margin-top:18px" onclick="login()">Giriş Yap</button><div id="loginError" class="login-error"></div><small style="display:block;color:var(--muted);margin-top:12px">İlk giriş: arda / 293364</small></div></div>
+<div id="loginScreen" class="login-screen"><div class="login-card"><div class="login-logo">E</div><h1>ELECTUS Finance</h1><p>Finans yönetim paneline giriş yapın.</p><div><label>Kullanıcı adı</label><input id="loginUser" value="arda" autocomplete="username"></div><div style="margin-top:12px"><label>Şifre</label><input id="loginPass" type="password" value="293364" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"></div><button id="loginButton" class="btn primary" style="width:100%;margin-top:18px" onclick="login()">Giriş Yap</button><div id="loginError" class="login-error"></div><small style="display:block;color:var(--muted);margin-top:12px">İlk giriş: arda / 293364</small></div></div>
 
 <div class="modal" id="modal"><div class="modal-box" id="modalContent"></div></div>
 
@@ -671,6 +671,8 @@ const _deletePayment=deletePayment;deletePayment=function(id){if(!requireAdmin()
   setInterval(()=>{if(shouldRefreshRates())fetchLiveRates(false);renderDueNotifications()},30*60*1000);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshFromBackendAndRender();});
   window.addEventListener('focus',()=>{refreshFromBackendAndRender();});
+  document.getElementById('loginButton')?.addEventListener('click',event=>{event.preventDefault();login();});
+  document.getElementById('loginUser')?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();login();}});
 })();
 </script>
 
