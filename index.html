@@ -296,6 +296,8 @@ const defaultData = {transactions:[], payments:[], users:[{username:"arda",name:
 
 let data = structuredClone(defaultData);
 let syncErrorNotified = false;
+let persistInFlight = null;
+let persistQueued = false;
 const monthNames=["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
 function fiscalStart(){return Number(document.getElementById("fiscalStartMonth")?.value ?? 7);}
 function fiscalMonths(){const start=fiscalStart();return Array.from({length:12},(_,i)=>(start+i)%12);}
@@ -389,24 +391,50 @@ async function saveToBackend(value){
   }
 }
 async function persist(){
-  const remoteSnapshot = await loadFromBackend();
-  const snapshot=mergeDataForSave(remoteSnapshot, data);
-  const saved=await saveToBackend(snapshot);
-  if(!saved){
-    if(!syncErrorNotified){
-      alert('Veri sunucuya kaydedilemedi. Değişiklikler diğer cihazlarda görünmeyecek.');
-      syncErrorNotified = true;
-    }
-    return false;
+  persistQueued = true;
+  if(persistInFlight){
+    return persistInFlight;
   }
-  data = snapshot;
-  normalizeData();
-  syncErrorNotified = false;
-  return saved;
+  persistInFlight = (async () => {
+    let lastResult = true;
+    while(persistQueued){
+      persistQueued = false;
+      const remoteSnapshot = await loadFromBackend();
+      const snapshot=mergeDataForSave(remoteSnapshot, data);
+      const saved=await saveToBackend(snapshot);
+      if(!saved){
+        if(!syncErrorNotified){
+          alert('Veri sunucuya kaydedilemedi. Değişiklikler diğer cihazlarda görünmeyecek.');
+          syncErrorNotified = true;
+        }
+        lastResult = false;
+        break;
+      }
+      data = snapshot;
+      normalizeData();
+      syncErrorNotified = false;
+      lastResult = true;
+    }
+    return lastResult;
+  })();
+
+  try{
+    return await persistInFlight;
+  } finally {
+    persistInFlight = null;
+  }
 }
 async function save(){
   const ok = await persist();
   if(ok){renderAll();}
+}
+async function refreshFromBackendAndRender(){
+  const backendData = await loadFromBackend();
+  if(backendData && typeof backendData === 'object'){
+    data = backendData;
+    normalizeData();
+    renderAll();
+  }
 }
 async function initializeData(){
   const backendData = await loadFromBackend();
@@ -621,6 +649,8 @@ const _deletePayment=deletePayment;deletePayment=function(id){if(!requireAdmin()
   if(document.getElementById("eurRate"))document.getElementById("eurRate").value=data.settings.eurRate||53.44;
   if(shouldRefreshRates())fetchLiveRates(false);
   setInterval(()=>{if(shouldRefreshRates())fetchLiveRates(false);renderDueNotifications()},30*60*1000);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshFromBackendAndRender();});
+  window.addEventListener('focus',()=>{refreshFromBackendAndRender();});
 })();
 </script>
 
