@@ -287,7 +287,7 @@
   </main>
 </div>
 
-<div id="loginScreen" class="login-screen"><div class="login-card"><div class="login-logo">E</div><h1>ELECTUS Finance</h1><p>Finans yönetim paneline giriş yapın.</p><div><label>Kullanıcı adı</label><input id="loginUser" value="admin" autocomplete="username"></div><div style="margin-top:12px"><label>Şifre</label><input id="loginPass" type="password" value="1234" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"></div><button class="btn primary" style="width:100%;margin-top:18px" onclick="login()">Giriş Yap</button><div id="loginError" class="login-error"></div><small style="display:block;color:var(--muted);margin-top:12px">İlk giriş: admin / 1234</small></div></div>
+<div id="loginScreen" class="login-screen"><div class="login-card"><div class="login-logo">E</div><h1>ELECTUS Finance</h1><p>Finans yönetim paneline giriş yapın.</p><div><label>Kullanıcı adı</label><input id="loginUser" value="arda" autocomplete="username"></div><div style="margin-top:12px"><label>Şifre</label><input id="loginPass" type="password" value="293364" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"></div><button class="btn primary" style="width:100%;margin-top:18px" onclick="login()">Giriş Yap</button><div id="loginError" class="login-error"></div><small style="display:block;color:var(--muted);margin-top:12px">İlk giriş: arda / 293364</small></div></div>
 
 <div class="modal" id="modal"><div class="modal-box" id="modalContent"></div></div>
 
@@ -295,12 +295,7 @@
 const defaultData = {transactions:[], payments:[], users:[{username:"arda",name:"ELECTUS Yönetici",role:"admin",password:"293364"}], settings:{eurRate:53.44,usdRate:46.00,baseCurrency:"TRY",autoRates:true,lastRateUpdate:null,rateSource:"Frankfurter",paymentNotifications:true,notifyDaysBefore:0,notifiedPayments:{}}, audit:[], meta:{version:12,lastBackup:null}};
 
 let data = structuredClone(defaultData);
-const storedLocal = localStorage.getItem("electusData") || localStorage.getItem("finoraData");
-let storedData = null;
-if(storedLocal){
-  try{ storedData = JSON.parse(storedLocal); }
-  catch(error){ console.warn("Kayıtlı veri okunamadı, boş veriyle başlatıldı.", error); }
-}
+let syncErrorNotified = false;
 const monthNames=["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
 function fiscalStart(){return Number(document.getElementById("fiscalStartMonth")?.value ?? 7);}
 function fiscalMonths(){const start=fiscalStart();return Array.from({length:12},(_,i)=>(start+i)%12);}
@@ -366,28 +361,27 @@ async function saveToBackend(value){
 async function persist(){
   const snapshot=structuredClone(data);
   const saved=await saveToBackend(snapshot);
-  localStorage.setItem("electusData",JSON.stringify(snapshot));
-  localStorage.removeItem("finoraData");
-  await saveToIndexedDB(snapshot);
+  if(!saved){
+    if(!syncErrorNotified){
+      alert('Veri sunucuya kaydedilemedi. Değişiklikler diğer cihazlarda görünmeyecek.');
+      syncErrorNotified = true;
+    }
+    return false;
+  }
+  syncErrorNotified = false;
   return saved;
 }
-async function save(){await persist();renderAll();}
+async function save(){
+  const ok = await persist();
+  if(ok){renderAll();}
+}
 async function initializeData(){
   const backendData = await loadFromBackend();
-  const dbData = await loadFromIndexedDB();
   if(backendData && typeof backendData === 'object'){
     data = backendData;
     normalizeData();
-    localStorage.setItem("electusData",JSON.stringify(data));
-    await saveToIndexedDB(data);
-  } else if(dbData && typeof dbData === 'object'){
-    data = dbData;
-    normalizeData();
-    localStorage.setItem("electusData",JSON.stringify(data));
-  } else if(storedData && typeof storedData === 'object'){
-    data = storedData;
-    normalizeData();
   } else {
+    console.warn('Backend verisi okunamadi; varsayilan veriyle baslatildi.');
     data = structuredClone(defaultData);
     normalizeData();
   }
