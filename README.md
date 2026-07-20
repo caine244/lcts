@@ -2,6 +2,12 @@ ELECTUS Finance Pro v16
 
 Açmak için index.html dosyasına çift tıklayın.
 
+Backend artık JSON dosyası yerine Postgres kullanır.
+
+Gerekli backend ortam değişkenleri:
+- DATABASE_URL
+- DATABASE_SSL=true (Render için önerilir)
+
 İlk giriş:
 Kullanıcı adı: admin
 Şifre: 1234
