@@ -935,7 +935,22 @@ window.renderPerformanceCenter=function(){
 
 <script>
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(console.warn));
+  window.addEventListener("load", async () => {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+    } catch (error) {
+      console.warn("Service worker unregister hatasi", error);
+    }
+    if ("caches" in window) {
+      try {
+        const names = await caches.keys();
+        await Promise.all(names.map(name => caches.delete(name)));
+      } catch (error) {
+        console.warn("Cache temizleme hatasi", error);
+      }
+    }
+  });
 }
 </script>
 </body>
