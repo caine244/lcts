@@ -146,8 +146,9 @@
       <button data-page="annual">Yıllık Özet</button>
       <button data-page="reports">Raporlar</button>
       <button data-page="settings">Ayarlar & Yedekleme</button>
+      <button data-page="staff-members">Haftalık Üye Tablosu</button>
     </nav>
-    <div class="user-box"><strong id="sideUserName">Kullanıcı</strong><small id="sideUserRole">Rol</small><div class="user-actions"><button onclick="showPage('settings')">Ayarlar</button><button onclick="logout()">Çıkış</button></div></div>
+    <div class="user-box"><strong id="sideUserName">Kullanıcı</strong><small id="sideUserRole">Rol</small><div class="user-actions"><button id="sideSettingsBtn" onclick="showPage('settings')">Ayarlar</button><button onclick="logout()">Çıkış</button></div></div>
   </aside>
 
   <main>
@@ -284,6 +285,16 @@
         <div class="card danger-zone"><h3>Tehlikeli İşlemler</h3><p style="color:var(--muted)">Bu işlemler geri alınamaz. Önce tam yedek almanız önerilir.</p><div class="mini-actions"><button class="btn danger" onclick="resetAllData()">Tüm Finansal Verileri Sil</button><button class="btn secondary" onclick="loadDemoData()">Örnek Veri Yükle</button></div></div>
       </div>
     </section>
+
+    <section id="staff-members" class="page">
+      <div class="topbar"><div><h1>Haftalık Üye Sayısı</h1><p>Personel ekranı: Her ayın haftalık üye sayılarını girin</p></div></div>
+      <div class="card">
+        <div class="annual-toolbar" style="margin-bottom:12px">
+          <div><label>Yıl</label><select id="staffYear" onchange="renderStaffMemberTable()"></select></div>
+        </div>
+        <div id="staffWeeklyTable"></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -299,7 +310,7 @@ let syncErrorNotified = false;
 let persistInFlight = null;
 let persistQueued = false;
 const monthNames=["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
-function fiscalStart(){return Number(document.getElementById("fiscalStartMonth")?.value ?? 7);}
+function fiscalStart(){return 7;}
 function fiscalMonths(){const start=fiscalStart();return Array.from({length:12},(_,i)=>(start+i)%12);}
 const incomeGroups=["Electus / Mera","Nirvana","IBAN Geliri"];
 const expenseGroups=["Redot","Kredi","Eleman","Reklam","Diğer"];
@@ -373,9 +384,10 @@ function mergeDataForSave(remoteData, localData){
   const remote = remoteData && typeof remoteData === 'object' ? remoteData : structuredClone(defaultData);
   const local = localData && typeof localData === 'object' ? localData : structuredClone(defaultData);
   const merged = deepMerge(structuredClone(remote), local);
-  merged.transactions = mergeByKey(remote.transactions, local.transactions, x => x?.id);
-  merged.payments = mergeByKey(remote.payments, local.payments, x => x?.id);
-  merged.users = mergeByKey(remote.users, local.users, x => x?.username);
+  // Listelerde son yazan taraf local olmalı; aksi halde silinen kayıtlar remote'dan geri gelebilir.
+  merged.transactions = structuredClone(Array.isArray(local.transactions) ? local.transactions : []);
+  merged.payments = structuredClone(Array.isArray(local.payments) ? local.payments : []);
+  merged.users = structuredClone(Array.isArray(local.users) ? local.users : []);
   merged.audit = mergeByKey(remote.audit, local.audit, x => x?.id)
     .sort((a,b)=>String(b?.date||'').localeCompare(String(a?.date||'')))
     .slice(0, 500);
@@ -571,7 +583,7 @@ function renderReports(){
 function renderCashflow(){const rate=Number(document.getElementById("eurRate")?.value)||0;const total=annualData().reduce((s,r)=>s+r.net,0);const horizons=[0,7,30,90].map(days=>{const end=new Date();end.setDate(end.getDate()+days);const delta=data.payments.filter(p=>p.status==="Bekliyor"&&new Date(p.date+"T00:00:00")<=end).reduce((s,p)=>s+(p.type==="Tahsilat"?1:-1)*tlValue(p,rate),0);return [days===0?"Bugün":days+" Gün",total+delta];});const max=Math.max(...horizons.map(r=>Math.abs(r[1])),1);document.getElementById("cashflowReport").innerHTML=horizons.map(r=>`<div class="cashflow-row"><strong>${r[0]}</strong><div class="track"><div class="fill ${r[1]<0?'negative':''}" style="width:${Math.max(6,Math.abs(r[1])/max*100)}%"></div></div><strong>${fmt(r[1])}</strong></div>`).join("");}
 function renderCategory(){const rate=Number(document.getElementById("eurRate")?.value)||0;const map={};periodTransactions().filter(t=>t.type==="Gider").forEach(t=>map[t.reportGroup||t.category]=(map[t.reportGroup||t.category]||0)+tlValue(t,rate));const total=Object.values(map).reduce((s,v)=>s+v,0)||1;document.getElementById("categoryReport").innerHTML=Object.entries(map).map(([k,v])=>`<div class="account"><div><strong>${escapeHtml(k)}</strong><small>%${Math.round(v/total*100)}</small></div><strong>${fmt(v)}</strong></div>`).join("")||'<div class="empty">Gider kaydı yok.</div>';}
 
-function setupFiscalStartMonths(){const el=document.getElementById("fiscalStartMonth");if(!el)return;const previous=el.value===""?7:Number(el.value);el.innerHTML=monthNames.map((name,i)=>`<option value="${i}">${name}</option>`).join("");el.value=String(Number.isInteger(previous)?previous:7);}
+function setupFiscalStartMonths(){const el=document.getElementById("fiscalStartMonth");if(!el)return;el.innerHTML=monthNames.map((name,i)=>`<option value="${i}">${name}</option>`).join("");el.value="7";el.disabled=true;}
 function setupAnnualYears(){const el=document.getElementById("annualYear");if(!el)return;const previous=Number(el.value)||2026;el.innerHTML="";const max=Math.max(new Date().getFullYear()+5,2031);for(let y=2026;y<=max;y++)el.add(new Option(`${y} Dönemi`,y));el.value=String(Math.max(2026,previous));}
 function annualRows(){const year=Number(document.getElementById("annualYear")?.value||2026),start=fiscalStart();return fiscalMonths().map(m=>({month:m,year:m>=start?year:year+1,label:monthNames[m]}));}
 function annualData(){const rows=annualRows(),rate=Number(document.getElementById("eurRate")?.value)||0;return rows.map(r=>{const ts=data.transactions.filter(t=>{const d=new Date(t.date+"T00:00:00");return d.getFullYear()===r.year&&d.getMonth()===r.month;});const sum=(type,group,currency)=>ts.filter(t=>t.type===type&&t.reportGroup===group&&(t.currency||"TRY")===currency).reduce((a,t)=>a+Number(t.amount||0),0);const eurTry=group=>ts.filter(t=>t.type==="Gelir"&&t.reportGroup===group&&t.currency==="EUR").reduce((a,t)=>a+tlValue(t,rate),0);const electusEUR=sum("Gelir","Electus / Mera","EUR"),electusTRY=sum("Gelir","Electus / Mera","TRY")+eurTry("Electus / Mera");const nirvanaEUR=sum("Gelir","Nirvana","EUR"),nirvanaTRY=sum("Gelir","Nirvana","TRY")+eurTry("Nirvana");const ibanEUR=sum("Gelir","IBAN Geliri","EUR"),ibanTRY=sum("Gelir","IBAN Geliri","TRY")+eurTry("IBAN Geliri");const totalEUR=electusEUR+nirvanaEUR+ibanEUR,totalTRY=electusTRY+nirvanaTRY+ibanTRY;const expense=g=>ts.filter(t=>t.type==="Gider"&&t.reportGroup===g).reduce((a,t)=>a+tlValue(t,rate),0);const redot=expense("Redot"),kredi=expense("Kredi"),eleman=expense("Eleman"),reklam=expense("Reklam"),diger=expense("Diğer"),totalExpense=redot+kredi+eleman+reklam+diger;return {...r,electusEUR,electusTRY,nirvanaEUR,nirvanaTRY,ibanEUR,ibanTRY,totalEUR,totalTRY,redot,kredi,eleman,reklam,diger,totalExpense,net:totalTRY-totalExpense};});}
@@ -636,7 +648,7 @@ function login(){const loginUserInput=document.getElementById("loginUser"),login
 function logout(){const loginScreenEl=document.getElementById("loginScreen"),loginPassInput=document.getElementById("loginPass"),loginErrorBox=document.getElementById("loginError");audit("Oturum kapatıldı",currentUser?.name||"");persist();currentUser=null;sessionStorage.removeItem("electusUser");if(loginScreenEl)loginScreenEl.classList.remove("hidden");if(loginPassInput)loginPassInput.value="";if(loginErrorBox)loginErrorBox.textContent=""}
 function applyPermissions(){if(!currentUser)return;const sideUserNameEl=document.getElementById("sideUserName"),sideUserRoleEl=document.getElementById("sideUserRole"),settingsButton=document.querySelector('button[data-page="settings"]');if(sideUserNameEl)sideUserNameEl.textContent=currentUser.name;if(sideUserRoleEl)sideUserRoleEl.textContent=currentUser.role==="admin"?"Yönetici":"Personel";if(settingsButton)settingsButton.style.display=currentUser.role==="admin"?"block":"none";document.querySelectorAll('.danger-zone').forEach(x=>x.style.display=currentUser.role==="admin"?"block":"none")}
 function requireAdmin(){if(currentUser?.role!=="admin"){alert("Bu işlem yalnızca yönetici yetkisiyle yapılabilir.");return false}return true}
-function renderSettings(){if(!document.getElementById("profileName"))return;profileName.value=currentUser?.name||"";profileRole.value=currentUser?.role||"staff";profileRole.disabled=currentUser?.role!=="admin";settingEurRate.value=data.settings.eurRate||53.44;settingUsdRate.value=data.settings.usdRate||46;baseCurrency.value=data.settings.baseCurrency||"TRY";autoRates.checked=data.settings.autoRates!==false;paymentNotifications.checked=data.settings.paymentNotifications!==false;notifyDaysBefore.value=String(data.settings.notifyDaysBefore??0);settingsTxCount.textContent=data.transactions.length;settingsPayCount.textContent=data.payments.length;lastBackupLabel.textContent=data.meta.lastBackup?new Date(data.meta.lastBackup).toLocaleString("tr-TR"):"Yok";renderRateStatus();renderNotificationStatus();auditLog.innerHTML=data.audit.length?`<table><thead><tr><th>Tarih</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th></tr></thead><tbody>${data.audit.map(a=>`<tr><td>${new Date(a.date).toLocaleString("tr-TR")}</td><td>${escapeHtml(a.user)}</td><td>${escapeHtml(a.action)}</td><td>${escapeHtml(a.detail)}</td></tr>`).join("")}</tbody></table>`:'<div class="empty">Henüz işlem geçmişi yok.</div>'}
+function renderSettings(){if(!document.getElementById("profileName"))return;profileName.value=currentUser?.name||"";profileRole.value=currentUser?.role||"staff";profileRole.disabled=currentUser?.role!=="admin";settingEurRate.value=data.settings.eurRate||53.44;settingUsdRate.value=data.settings.usdRate||46;baseCurrency.value=data.settings.baseCurrency||"TRY";autoRates.checked=data.settings.autoRates!==false;paymentNotifications.checked=data.settings.paymentNotifications!==false;notifyDaysBefore.value=String(data.settings.notifyDaysBefore??0);settingsTxCount.textContent=data.transactions.length;settingsPayCount.textContent=data.payments.length;lastBackupLabel.textContent=data.meta.lastBackup?new Date(data.meta.lastBackup).toLocaleString("tr-TR"):"Yok";renderRateStatus();renderNotificationStatus();auditLog.innerHTML=data.audit.length?`<table><thead><tr><th>Tarih</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th></tr></thead><tbody>${data.audit.map(a=>`<tr><td>${new Date(a.date).toLocaleString("tr-TR")}</td><td>${escapeHtml(a.user)}</td><td>${escapeHtml(a.action)}</td><td>${escapeHtml(a.detail)}</td></tr>`).join("")}</tbody></table>`:'<div class="empty">Henüz işlem geçmişi yok.</div>';renderElectusUsers()}
 function saveProfile(){if(!currentUser)return;currentUser.name=profileName.value.trim()||currentUser.name;if(currentUser.role==="admin")currentUser.role=profileRole.value;if(profilePassword.value)currentUser.password=profilePassword.value;profilePassword.value="";audit("Profil güncellendi",currentUser.name);save();applyPermissions();alert("Profil kaydedildi.")}
 function saveCurrencySettings(){data.settings.eurRate=Number(settingEurRate.value)||0;data.settings.usdRate=Number(settingUsdRate.value)||0;data.settings.baseCurrency=baseCurrency.value;data.settings.autoRates=autoRates.checked;const e=document.getElementById("eurRate");if(e)e.value=data.settings.eurRate;audit("Kur ayarları güncellendi",`EUR ${data.settings.eurRate} · USD ${data.settings.usdRate} · Otomatik ${data.settings.autoRates?"Açık":"Kapalı"}`);save();if(data.settings.autoRates)fetchLiveRates(true)}
 
@@ -898,15 +910,35 @@ function addElectusUser(){
  renderElectusUsers();
  alert("Kullanıcı oluşturuldu.");
 }
+function findElectusUserIndex(encodedUsername){
+ const username=decodeURIComponent(String(encodedUsername||""));
+ return data.users.findIndex(u=>u.username===username);
+}
 function renderElectusUsers(){
  const el=document.getElementById("userList"); if(!el)return;
  if(!currentUser || currentUser.role!=="admin"){el.innerHTML="";return;}
- el.innerHTML="<b>Kullanıcılar</b><br>"+data.users.map((u,i)=>`<div style="margin-top:8px">${u.username} - ${u.role==="admin"?"Yönetici":"Personel"} <button class="btn secondary" onclick="resetElectusUser(${i})">Şifre Sıfırla</button></div>`).join("");
+ el.innerHTML="<b>Kullanıcılar</b><br>"+data.users.map(u=>{const key=encodeURIComponent(u.username);return `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${escapeHtml(u.username)} - ${u.role==="admin"?"Yönetici":"Personel"}</span><button class="btn secondary" onclick="resetElectusUser('${key}')">Şifre Sıfırla</button><button class="btn secondary" onclick="deleteElectusUser('${key}')">Sil</button></div>`;}).join("");
 }
-function resetElectusUser(i){
+function resetElectusUser(encodedUsername){
  if(!currentUser || currentUser.role!=="admin")return;
+ const i=findElectusUserIndex(encodedUsername);
+ if(i<0){alert("Kullanıcı bulunamadı.");return;}
  const p=prompt("Yeni şifre:");
  if(p){data.users[i].password=p;data.users[i].firstLogin=true;audit("Kullanıcı şifresi sıfırlandı",data.users[i].username);save();renderElectusUsers();}
+}
+function deleteElectusUser(encodedUsername){
+ if(!currentUser || currentUser.role!=="admin")return;
+ const i=findElectusUserIndex(encodedUsername);
+ if(i<0){alert("Kullanıcı bulunamadı.");return;}
+ const target=data.users[i];
+ if(target.username===currentUser.username){alert("Kendi hesabınızı silemezsiniz.");return;}
+ if(target.role==="admin"&&data.users.filter(u=>u.role==="admin").length<=1){alert("Sistemde en az bir yönetici kalmalıdır.");return;}
+ if(!confirm(`${target.username} kullanıcısı silinsin mi?`))return;
+ data.users.splice(i,1);
+ audit("Kullanıcı silindi",target.username);
+ save();
+ renderElectusUsers();
+ alert("Kullanıcı silindi.");
 }
 </script>
 
@@ -1019,6 +1051,118 @@ window.renderPerformanceCenter=function(){
   root.innerHTML='<div class="card">Performans Merkezi veri bağlantısı düzeltildi ancak veri okunamadı.</div>';
  }
 };
+})();
+</script>
+
+<script id="v21StaffRolePatch">
+(()=>{
+  function isStaff(){return currentUser?.role==='staff';}
+  function ensureStaffWeeklyData(){
+    data.settings ||= {};
+    data.settings.staffWeeklyMembers ||= {};
+  }
+  function monthKey(year,monthIndex){return `${year}-${String(monthIndex+1).padStart(2,'0')}`;}
+  function getWeekValues(key){
+    const raw=Array.isArray(data.settings.staffWeeklyMembers[key])?data.settings.staffWeeklyMembers[key]:[];
+    return Array.from({length:5},(_,i)=>{
+      const v=raw[i];
+      return (v===0||v)?Number(v):"";
+    });
+  }
+  function monthDiff(values){
+    const firstRaw=values[0];
+    if(firstRaw===""||firstRaw===null||firstRaw===undefined)return null;
+    let last=firstRaw;
+    for(let i=values.length-1;i>=0;i--){
+      if(values[i]!==""&&values[i]!==null&&values[i]!==undefined){last=Number(values[i]);break;}
+    }
+    return Number(last)-Number(firstRaw);
+  }
+
+  window.setupStaffYears=function(){
+    const el=document.getElementById('staffYear');
+    if(!el)return;
+    const current=new Date().getFullYear();
+    const previous=Number(el.value)||current;
+    el.innerHTML='';
+    for(let y=2026;y<=Math.max(2035,current+5);y++)el.add(new Option(String(y),String(y)));
+    el.value=String(previous);
+  };
+
+  window.renderStaffMemberTable=function(){
+    const root=document.getElementById('staffWeeklyTable');
+    if(!root)return;
+    ensureStaffWeeklyData();
+    setupStaffYears();
+    const year=Number(document.getElementById('staffYear')?.value)||new Date().getFullYear();
+    const rows=monthNames.map((name,month)=>{
+      const key=monthKey(year,month);
+      const values=getWeekValues(key);
+      const diff=monthDiff(values);
+      const diffLabel=diff===null?'-':(diff>0?`+${diff}`:String(diff));
+      const diffClass=diff===null?'':(diff>=0?'green':'red');
+      return `<tr><td><strong>${name} ${year}</strong></td>${values.map((v,idx)=>`<td><input type="number" min="0" step="1" value="${v}" onchange="updateStaffWeekValue('${key}',${idx},this.value)"></td>`).join('')}<td class="${diffClass}"><strong>${diffLabel}</strong></td></tr>`;
+    }).join('');
+    root.innerHTML=`<div class="entry-wrap"><table class="entry-table" style="min-width:980px"><thead><tr><th>Ay</th><th>1. Hafta</th><th>2. Hafta</th><th>3. Hafta</th><th>4. Hafta</th><th>5. Hafta</th><th>Fark (1. → Son)</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  };
+
+  window.updateStaffWeekValue=function(key,weekIndex,value){
+    if(!isStaff())return;
+    ensureStaffWeeklyData();
+    const arr=Array.isArray(data.settings.staffWeeklyMembers[key])?[...data.settings.staffWeeklyMembers[key]]:[null,null,null,null,null];
+    const trimmed=String(value??'').trim();
+    arr[weekIndex]=trimmed===''?null:Math.max(0,Math.round(Number(trimmed)||0));
+    data.settings.staffWeeklyMembers[key]=arr;
+    audit('Haftalık üye sayısı güncellendi',`${key} · Hafta ${weekIndex+1} · ${arr[weekIndex]??'-'}`);
+    save();
+  };
+
+  function denyForStaff(message){
+    if(!isStaff())return false;
+    alert(message||'Bu işlem personel rolü için kapalıdır.');
+    return true;
+  }
+
+  const _openTransactionModal=openTransactionModal;openTransactionModal=function(id=null){if(denyForStaff('Personel gelir/gider işlemi yapamaz.'))return;_openTransactionModal(id);};
+  const _openPaymentModal=openPaymentModal;openPaymentModal=function(id=null){if(denyForStaff('Personel ödeme/tahsilat işlemi yapamaz.'))return;_openPaymentModal(id);};
+  const _saveTransaction=saveTransaction;saveTransaction=function(id){if(denyForStaff('Personel gelir/gider ekleyemez veya düzenleyemez.'))return;_saveTransaction(id);};
+  const _savePayment=savePayment;savePayment=function(id){if(denyForStaff('Personel ödeme/tahsilat ekleyemez veya düzenleyemez.'))return;_savePayment(id);};
+  const _addQuickMonthlyEntry=addQuickMonthlyEntry;addQuickMonthlyEntry=function(){if(denyForStaff('Personel gelir/gider kaydı ekleyemez.'))return;_addQuickMonthlyEntry();};
+  const _saveMonthlyEntryEdit=saveMonthlyEntryEdit;saveMonthlyEntryEdit=function(id){if(denyForStaff('Personel gelir/gider kaydı düzenleyemez.'))return;_saveMonthlyEntryEdit(id);};
+  const _deleteTransaction=deleteTransaction;deleteTransaction=function(id){if(denyForStaff('Personel gelir/gider kaydı silemez.'))return;_deleteTransaction(id);};
+  const _deletePayment=deletePayment;deletePayment=function(id){if(denyForStaff('Personel planlama kaydı silemez.'))return;_deletePayment(id);};
+  const _deleteMonthlyEntry=deleteMonthlyEntry;deleteMonthlyEntry=function(id){if(denyForStaff('Personel aylık kayıt silemez.'))return;_deleteMonthlyEntry(id);};
+  const _togglePayment=togglePayment;togglePayment=function(id){if(denyForStaff('Personel ödeme/tahsilat durumunu değiştiremez.'))return;_togglePayment(id);};
+  const _addElectusUser=addElectusUser;addElectusUser=function(){if(denyForStaff('Personel kullanıcı ekleyemez.'))return;_addElectusUser();};
+  const _resetElectusUser=resetElectusUser;resetElectusUser=function(encodedUsername){if(denyForStaff('Personel kullanıcı güncelleyemez.'))return;_resetElectusUser(encodedUsername);};
+  const _deleteElectusUser=deleteElectusUser;deleteElectusUser=function(encodedUsername){if(denyForStaff('Personel kullanıcı silemez.'))return;_deleteElectusUser(encodedUsername);};
+
+  const _applyPermissions=applyPermissions;
+  applyPermissions=function(){
+    _applyPermissions();
+    const navButtons=[...document.querySelectorAll('aside nav button')];
+    const settingsBtn=document.getElementById('sideSettingsBtn');
+    const staffMode=isStaff();
+    navButtons.forEach(btn=>{
+      const page=btn.dataset.page;
+      if(staffMode)btn.style.display=page==='staff-members'?'block':'none';
+      else btn.style.display=page==='staff-members'?'none':'block';
+    });
+    if(settingsBtn)settingsBtn.style.display=staffMode?'none':'block';
+  };
+
+  const _showPage=showPage;
+  showPage=function(id){
+    if(isStaff()&&id!=='staff-members')id='staff-members';
+    _showPage(id);
+  };
+
+  const _renderAll=renderAll;
+  renderAll=function(){
+    _renderAll();
+    renderStaffMemberTable();
+    if(isStaff())showPage('staff-members');
+  };
 })();
 </script>
 
