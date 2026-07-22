@@ -27,7 +27,7 @@ Kalıcı korumalar (aktif):
 
 Render cron ayarı:
 - [render.yaml](render.yaml) içinde haftalık pazartesi 03:00 snapshot görevi tanımlıdır.
-- Cron servisinde BACKEND_URL değerini canlı backend adresinizle doldurun.
+- Cron servisinde BACKEND_URL degeri sadece backend kok adresi olmalidir (ornek: https://lcts-backend.onrender.com). Sonuna /api eklemeyin.
 
 v16 değişiklikleri:
 - Ayarlar bölümüne yönetici şifresinden bağımsız dönem kilidi şifresi belirleme alanı eklendi.

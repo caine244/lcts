@@ -30,6 +30,7 @@ Bu dizin, mevcut `index.html` tabanlı ELECTUS ön yüzünü bozmadan çalışac
 - `DATABASE_SSL` (production için `true` önerilir)
 - `MAX_BACKUPS` (varsayılan `500`, saklanacak max snapshot sayısı)
 - `BACKUP_CRON_SECRET` (cron snapshot endpoint doğrulaması)
+- `BACKEND_URL` (cron tetikleyici script'i için, ornek: `https://lcts-backend.onrender.com`, `/api` olmadan)
 
 ## Admin Header Doğrulaması
 
