@@ -146,6 +146,7 @@
       <button data-page="annual">Yıllık Özet</button>
       <button data-page="reports">Raporlar</button>
       <button data-page="settings">Ayarlar & Yedekleme</button>
+      <button data-page="staff-payments">Personel Ödeme Bekleyen</button>
       <button data-page="staff-members">Haftalık Üye Tablosu</button>
     </nav>
     <div class="user-box"><strong id="sideUserName">Kullanıcı</strong><small id="sideUserRole">Rol</small><div class="user-actions"><button id="sideSettingsBtn" onclick="showPage('settings')">Ayarlar</button><button onclick="logout()">Çıkış</button></div></div>
@@ -287,15 +288,9 @@
       </div>
     </section>
 
-    <section id="staff-members" class="page">
-      <div class="topbar"><div><h1>Haftalık Üye Sayısı</h1><p>Personel ekranı: Her ayın haftalık üye sayılarını girin</p></div><button class="btn primary" onclick="openStaffPaymentModal()">+ Personel Planlama Ekle</button></div>
+    <section id="staff-payments" class="page">
+      <div class="topbar"><div><h1>Yaklaşan Ödeme & Tahsilatlar (Personel)</h1><p>Personel planlamaları yönetici planlamasından ayrı tutulur</p></div><button class="btn primary" onclick="openStaffPaymentModal()">+ Personel Planlama Ekle</button></div>
       <div class="card">
-        <div class="annual-toolbar" style="margin-bottom:12px">
-          <div><label>Yıl</label><select id="staffYear" onchange="renderStaffMemberTable()"></select></div>
-        </div>
-        <div id="staffWeeklyTable"></div>
-      </div>
-      <div class="card" style="margin-top:16px">
         <div class="section-title"><h3>Yaklaşan Ödeme & Tahsilatlar (Personel)</h3><span class="badge pending">Yönetici planlamasından ayrı</span></div>
         <div class="grid cards" style="margin-bottom:14px">
           <div class="card metric"><div class="label">Bekleyen Tahsilat</div><div class="value" id="staffPendingIncome">₺0</div></div>
@@ -303,6 +298,16 @@
         </div>
         <div id="staffUpcomingList" style="margin-bottom:14px"></div>
         <div id="staffPaymentsTable"></div>
+      </div>
+    </section>
+
+    <section id="staff-members" class="page">
+      <div class="topbar"><div><h1>Haftalık Üye Sayısı</h1><p>Personel ekranı: Her ayın haftalık üye sayılarını girin</p></div></div>
+      <div class="card">
+        <div class="annual-toolbar" style="margin-bottom:12px">
+          <div><label>Yıl</label><select id="staffYear" onchange="renderStaffMemberTable()"></select></div>
+        </div>
+        <div id="staffWeeklyTable"></div>
       </div>
     </section>
   </main>
@@ -1375,15 +1380,15 @@ window.renderPerformanceCenter=function(){
     const staffMode=isStaff();
     navButtons.forEach(btn=>{
       const page=btn.dataset.page;
-      if(staffMode)btn.style.display=page==='staff-members'?'block':'none';
-      else btn.style.display=page==='staff-members'?'none':'block';
+      if(staffMode)btn.style.display=(page==='staff-payments'||page==='staff-members')?'block':'none';
+      else btn.style.display=(page==='staff-payments'||page==='staff-members')?'none':'block';
     });
     if(settingsBtn)settingsBtn.style.display=staffMode?'none':'block';
   };
 
   const _showPage=showPage;
   showPage=function(id){
-    if(isStaff()&&id!=='staff-members')id='staff-members';
+    if(isStaff()&&id!=='staff-members'&&id!=='staff-payments')id='staff-payments';
     _showPage(id);
   };
 
@@ -1392,7 +1397,7 @@ window.renderPerformanceCenter=function(){
     _renderAll();
     renderStaffMemberTable();
     renderStaffPaymentsPanel();
-    if(isStaff())showPage('staff-members');
+    if(isStaff())showPage('staff-payments');
   };
 })();
 </script>
