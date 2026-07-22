@@ -9,3 +9,19 @@ services:
         sync: false
       - key: DATABASE_SSL
         value: "true"
+      - key: MAX_BACKUPS
+        value: "1000"
+      - key: BACKUP_CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: lcts-weekly-backup
+    runtime: node
+    schedule: "0 3 * * 1"
+    buildCommand: npm --prefix backend install
+    startCommand: curl -fsS -X POST "$BACKEND_URL/api/internal/backup-snapshot" -H "x-backup-secret: $BACKUP_CRON_SECRET"
+    envVars:
+      - key: BACKEND_URL
+        sync: false
+      - key: BACKUP_CRON_SECRET
+        sync: false

@@ -279,6 +279,7 @@
         <div class="card setting-block"><h3>Ödeme Günü Bildirimleri</h3><p style="color:var(--muted);font-size:13px">Vadesi bugün olan ve geciken bekleyen ödeme/tahsilatlar uygulama içinde gösterilir. Tarayıcı izin verirse masaüstü bildirimi de gönderilir.</p><div class="switch-row"><label for="paymentNotifications">Bildirimleri etkinleştir</label><input id="paymentNotifications" type="checkbox"></div><div><label>Kaç gün önceden hatırlat?</label><select id="notifyDaysBefore"><option value="0">Sadece vade günü</option><option value="1">1 gün önce</option><option value="3">3 gün önce</option><option value="7">7 gün önce</option></select></div><div id="notificationStatus" class="rate-status">Bildirim durumu kontrol edilmedi.</div><div class="form-actions"><button class="btn secondary" onclick="requestNotificationPermission()">Tarayıcı İzni Ver</button><button class="btn primary" onclick="saveNotificationSettings()">Bildirim Ayarlarını Kaydet</button></div></div>
         <div class="card setting-block"><h3>Dönem Kilidi Şifresi</h3><p style="color:var(--muted);font-size:13px">Kilitli aylarda kayıt ekleme, düzenleme, silme ve kilit açma işlemleri için yönetici şifresinden bağımsız bir şifre belirleyin.</p><div><label>Mevcut kilit şifresi</label><input id="currentLockPassword" type="password" placeholder="İlk kez belirliyorsanız boş bırakın"></div><div style="margin-top:12px"><label>Yeni kilit şifresi</label><input id="newLockPassword" type="password" minlength="4" placeholder="En az 4 karakter"></div><div style="margin-top:12px"><label>Yeni şifre tekrar</label><input id="confirmLockPassword" type="password" minlength="4" placeholder="Yeni şifreyi tekrar yazın"></div><div id="lockPasswordStatus" class="rate-status">Henüz ayrı dönem kilidi şifresi belirlenmedi.</div><div class="form-actions"><button class="btn primary" onclick="saveLockPassword()">Kilit Şifresini Kaydet</button></div></div>
         <div class="card setting-block"><h3>Veri Depolama</h3><p style="color:var(--muted);font-size:13px">Veriler öncelikle backend API üzerinden saklanır; çevrimdışı durumda tarayıcının IndexedDB yedeği kullanılır ve JSON yedek alınabilir.</p><div class="insight-list"><div class="insight"><div><strong>İşlem sayısı</strong><small>Tüm gelir/gider hareketleri</small></div><strong id="settingsTxCount">0</strong></div><div class="insight"><div><strong>Planlama sayısı</strong><small>Ödeme ve tahsilatlar</small></div><strong id="settingsPayCount">0</strong></div><div class="insight"><div><strong>Son yedek</strong><small>Bu cihazda kayıtlı</small></div><strong id="lastBackupLabel">Yok</strong></div></div></div>
+        <div class="card setting-block"><h3>Sunucu Snapshot Yedekleri</h3><p style="color:var(--muted);font-size:13px">Her kayıt öncesi otomatik snapshot alınır. Buradan manuel yedek oluşturabilir ve geçmiş snapshot'lardan geri yükleyebilirsiniz.</p><div class="form-actions"><button class="btn secondary" onclick="refreshServerBackups()">Listeyi Yenile</button><button class="btn primary" onclick="createServerSnapshotBackup()">Sunucuda Yedek Oluştur</button></div><div id="serverBackupStatus" class="rate-status">Yedek listesi henüz yüklenmedi.</div><div id="serverBackupList" class="search-results" style="margin-top:10px"></div></div>
       </div>
       <div class="grid two">
         <div class="card"><div class="section-title"><h3>İşlem Geçmişi</h3><button class="btn secondary" onclick="clearAuditLog()">Geçmişi Temizle</button></div><div id="auditLog" class="audit-table"></div></div>
@@ -409,6 +410,13 @@ async function loadFromBackend(){
     return null;
   }
 }
+function isMeaningfullyNonEmpty(dataset){
+  if(!dataset || typeof dataset !== 'object') return false;
+  const txCount = Array.isArray(dataset.transactions) ? dataset.transactions.length : 0;
+  const payCount = Array.isArray(dataset.payments) ? dataset.payments.length : 0;
+  const auditCount = Array.isArray(dataset.audit) ? dataset.audit.length : 0;
+  return txCount > 0 || payCount > 0 || auditCount > 0;
+}
 async function saveToBackend(value){
   try{
     await apiFetch('/api/data',{method:'POST',body:JSON.stringify(value)});
@@ -428,6 +436,14 @@ async function persist(){
     while(persistQueued){
       persistQueued = false;
       const remoteSnapshot = await loadFromBackend();
+      if(!remoteSnapshot || typeof remoteSnapshot !== 'object'){
+        if(!syncErrorNotified){
+          alert('Sunucu verisi okunamadığı için kayıt durduruldu. Veri kaybını önlemek için bu turda sunucuya yazılmadı.');
+          syncErrorNotified = true;
+        }
+        lastResult = false;
+        break;
+      }
       const snapshot=mergeDataForSave(remoteSnapshot, data);
       const saved=await saveToBackend(snapshot);
       if(!saved){
@@ -439,6 +455,7 @@ async function persist(){
         break;
       }
       data = snapshot;
+      saveToIndexedDB(snapshot);
       normalizeData();
       syncErrorNotified = false;
       lastResult = true;
@@ -466,19 +483,46 @@ async function refreshFromBackendAndRender(){
   if(backendData && typeof backendData === 'object'){
     data = backendData;
     normalizeData();
+    saveToIndexedDB(data);
     renderAll();
   }
 }
 async function initializeData(){
-  const backendData = await loadFromBackend();
+  const [backendData, localBackup] = await Promise.all([loadFromBackend(), loadFromIndexedDB()]);
   if(backendData && typeof backendData === 'object'){
     data = backendData;
     normalizeData();
-  } else {
-    console.warn('Backend verisi okunamadi; varsayilan veriyle baslatildi.');
-    data = structuredClone(defaultData);
-    normalizeData();
+
+    const backendEmpty = !isMeaningfullyNonEmpty(data);
+    const localHasData = isMeaningfullyNonEmpty(localBackup);
+    if(backendEmpty && localHasData){
+      const shouldRestore = confirm('Sunucudaki veri boş görünüyor. Tarayıcıdaki yerel yedek geri yüklensin mi?');
+      if(shouldRestore){
+        data = deepMerge(structuredClone(defaultData), localBackup);
+        normalizeData();
+        const restored = await saveToBackend(data);
+        if(restored){
+          alert('Yerel yedek sunucuya geri yüklendi.');
+        } else {
+          alert('Yerel yedek bulundu ancak sunucuya geri yüklenemedi.');
+        }
+      }
+    }
+
+    saveToIndexedDB(data);
+    return;
   }
+
+  if(localBackup && typeof localBackup === 'object'){
+    console.warn('Backend verisi okunamadi; tarayicidaki yerel yedek kullanildi.');
+    data = deepMerge(structuredClone(defaultData), localBackup);
+    normalizeData();
+    return;
+  }
+
+  console.warn('Backend ve yerel yedek okunamadi; varsayilan veriyle baslatildi.');
+  data = structuredClone(defaultData);
+  normalizeData();
 }
 
 function addTransactionRecord(t){data.transactions.push(t);audit("İşlem eklendi",`${t.type} · ${t.description} · ${fmtCurrency(t.amount,t.currency)}`);}
@@ -649,7 +693,7 @@ function login(){const loginUserInput=document.getElementById("loginUser"),login
 function logout(){const loginScreenEl=document.getElementById("loginScreen"),loginPassInput=document.getElementById("loginPass"),loginErrorBox=document.getElementById("loginError");audit("Oturum kapatıldı",currentUser?.name||"");persist();currentUser=null;sessionStorage.removeItem("electusUser");if(loginScreenEl)loginScreenEl.classList.remove("hidden");if(loginPassInput)loginPassInput.value="";if(loginErrorBox)loginErrorBox.textContent=""}
 function applyPermissions(){if(!currentUser)return;const sideUserNameEl=document.getElementById("sideUserName"),sideUserRoleEl=document.getElementById("sideUserRole"),settingsButton=document.querySelector('button[data-page="settings"]');if(sideUserNameEl)sideUserNameEl.textContent=currentUser.name;if(sideUserRoleEl)sideUserRoleEl.textContent=currentUser.role==="admin"?"Yönetici":"Personel";if(settingsButton)settingsButton.style.display=currentUser.role==="admin"?"block":"none";document.querySelectorAll('.danger-zone').forEach(x=>x.style.display=currentUser.role==="admin"?"block":"none")}
 function requireAdmin(){if(currentUser?.role!=="admin"){alert("Bu işlem yalnızca yönetici yetkisiyle yapılabilir.");return false}return true}
-function renderSettings(){if(!document.getElementById("profileName"))return;profileName.value=currentUser?.name||"";profileRole.value=currentUser?.role||"staff";profileRole.disabled=currentUser?.role!=="admin";settingEurRate.value=data.settings.eurRate||53.44;settingUsdRate.value=data.settings.usdRate||46;baseCurrency.value=data.settings.baseCurrency||"TRY";autoRates.checked=data.settings.autoRates!==false;paymentNotifications.checked=data.settings.paymentNotifications!==false;notifyDaysBefore.value=String(data.settings.notifyDaysBefore??0);settingsTxCount.textContent=data.transactions.length;settingsPayCount.textContent=data.payments.length;lastBackupLabel.textContent=data.meta.lastBackup?new Date(data.meta.lastBackup).toLocaleString("tr-TR"):"Yok";renderRateStatus();renderNotificationStatus();auditLog.innerHTML=data.audit.length?`<table><thead><tr><th>Tarih</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th></tr></thead><tbody>${data.audit.map(a=>`<tr><td>${new Date(a.date).toLocaleString("tr-TR")}</td><td>${escapeHtml(a.user)}</td><td>${escapeHtml(a.action)}</td><td>${escapeHtml(a.detail)}</td></tr>`).join("")}</tbody></table>`:'<div class="empty">Henüz işlem geçmişi yok.</div>';renderElectusUsers()}
+function renderSettings(){if(!document.getElementById("profileName"))return;profileName.value=currentUser?.name||"";profileRole.value=currentUser?.role||"staff";profileRole.disabled=currentUser?.role!=="admin";settingEurRate.value=data.settings.eurRate||53.44;settingUsdRate.value=data.settings.usdRate||46;baseCurrency.value=data.settings.baseCurrency||"TRY";autoRates.checked=data.settings.autoRates!==false;paymentNotifications.checked=data.settings.paymentNotifications!==false;notifyDaysBefore.value=String(data.settings.notifyDaysBefore??0);settingsTxCount.textContent=data.transactions.length;settingsPayCount.textContent=data.payments.length;lastBackupLabel.textContent=data.meta.lastBackup?new Date(data.meta.lastBackup).toLocaleString("tr-TR"):"Yok";renderRateStatus();renderNotificationStatus();auditLog.innerHTML=data.audit.length?`<table><thead><tr><th>Tarih</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th></tr></thead><tbody>${data.audit.map(a=>`<tr><td>${new Date(a.date).toLocaleString("tr-TR")}</td><td>${escapeHtml(a.user)}</td><td>${escapeHtml(a.action)}</td><td>${escapeHtml(a.detail)}</td></tr>`).join("")}</tbody></table>`:'<div class="empty">Henüz işlem geçmişi yok.</div>';renderElectusUsers();refreshServerBackups()}
 function saveProfile(){if(!currentUser)return;currentUser.name=profileName.value.trim()||currentUser.name;if(currentUser.role==="admin")currentUser.role=profileRole.value;if(profilePassword.value)currentUser.password=profilePassword.value;profilePassword.value="";audit("Profil güncellendi",currentUser.name);save();applyPermissions();alert("Profil kaydedildi.")}
 function saveCurrencySettings(){data.settings.eurRate=Number(settingEurRate.value)||0;data.settings.usdRate=Number(settingUsdRate.value)||0;data.settings.baseCurrency=baseCurrency.value;data.settings.autoRates=autoRates.checked;const e=document.getElementById("eurRate");if(e)e.value=data.settings.eurRate;audit("Kur ayarları güncellendi",`EUR ${data.settings.eurRate} · USD ${data.settings.usdRate} · Otomatik ${data.settings.autoRates?"Açık":"Kapalı"}`);save();if(data.settings.autoRates)fetchLiveRates(true)}
 
@@ -664,10 +708,93 @@ function renderNotificationStatus(message="",kind=""){const el=document.getEleme
 function duePayments(){const today=new Date();today.setHours(0,0,0,0);const ahead=Number(data.settings.notifyDaysBefore)||0;const limit=new Date(today);limit.setDate(limit.getDate()+ahead);return data.payments.filter(p=>p.status==="Bekliyor").map(p=>({...p,_date:new Date(p.date+"T00:00:00")})).filter(p=>p._date<=limit).sort((a,b)=>a.date.localeCompare(b.date));}
 function renderDueNotifications(){const root=document.getElementById("dueNoticePanel");if(!root)return;const list=duePayments();if(!list.length){root.className="notice-panel";root.innerHTML="";return}const today=new Date();today.setHours(0,0,0,0);root.className="notice-panel show";root.innerHTML=`<h3>Ödeme Takvimi Hatırlatmaları <span class="notif-count">${list.length}</span></h3>${list.slice(0,8).map(p=>{const diff=Math.round((p._date-today)/86400000);const label=diff<0?`${Math.abs(diff)} gün gecikti`:diff===0?"Bugün":`${diff} gün kaldı`;return `<div class="notice-item"><div><strong>${escapeHtml(p.title)}</strong><small style="display:block;color:#92400e">${p.type} · ${formatDateTR(p.date)} · ${label}</small></div><strong>${fmtCurrency(p.amount,p.currency)}</strong></div>`}).join("")}<div class="form-actions"><button class="btn secondary" onclick="showPage('payments')">Takvimi Aç</button></div>`;sendDueSystemNotifications(list);}
 function sendDueSystemNotifications(list){if(data.settings.paymentNotifications===false||!("Notification" in window)||Notification.permission!=="granted")return;const todayKey=new Date().toISOString().slice(0,10);let changed=false;for(const p of list){const key=String(p.id);if(data.settings.notifiedPayments[key]===todayKey)continue;try{new Notification(`${p.type} hatırlatması`,{body:`${p.title} · ${formatDateTR(p.date)} · ${fmtCurrency(p.amount,p.currency)}`,tag:`electus-payment-${p.id}`});data.settings.notifiedPayments[key]=todayKey;changed=true}catch(e){console.warn("Bildirim gönderilemedi",e)}}if(changed)persist();}
+function apiAdminHeaders(){return {'x-admin-user':currentUser?.username||'', 'x-admin-pass':currentUser?.password||''};}
+function backupReasonLabel(reason){
+  const value=String(reason||"");
+  if(value.startsWith("manual-create-"))return "Manuel";
+  if(value.startsWith("pre-restore-"))return "Geri yukleme oncesi";
+  if(value==="scheduled-cron")return "Haftalik zamanli";
+  if(value==="auto-before-save")return "Otomatik kayit oncesi";
+  if(value==="bootstrap-from-local-json")return "Ilk acilis aktarimi";
+  return value||"Bilinmiyor";
+}
+async function refreshServerBackups(){
+  const statusEl=document.getElementById("serverBackupStatus"),listEl=document.getElementById("serverBackupList");
+  if(!statusEl||!listEl)return;
+  if(!currentUser||currentUser.role!=="admin"){
+    statusEl.className="rate-status error";
+    statusEl.textContent="Sunucu yedekleri sadece admin hesapla goruntulenir.";
+    listEl.innerHTML="";
+    return;
+  }
+  statusEl.className="rate-status";
+  statusEl.textContent="Sunucu yedekleri yukleniyor...";
+  try{
+    const backups=await apiFetch('/api/backups',{headers:apiAdminHeaders()});
+    const rows=Array.isArray(backups)?backups:[];
+    statusEl.className="rate-status ok";
+    statusEl.textContent=`${rows.length} yedek bulundu.`;
+    listEl.innerHTML=rows.length?rows.map(b=>`<div class="account"><div><strong>#${b.id} · ${backupReasonLabel(b.reason)}</strong><small>${new Date(b.createdAt).toLocaleString('tr-TR')} · Islem: ${b.transactions} · Planlama: ${b.payments}</small></div><div style="display:flex;gap:8px"><button class="btn secondary" onclick="restoreServerBackup(${Number(b.id)||0})">Geri Yukle</button></div></div>`).join(''):'<div class="empty">Sunucuda snapshot bulunamadı.</div>';
+  }catch(error){
+    statusEl.className="rate-status error";
+    statusEl.textContent=`Sunucu yedekleri yuklenemedi: ${error.message||error}`;
+    listEl.innerHTML='';
+  }
+}
+async function createServerSnapshotBackup(){
+  if(!requireAdmin())return;
+  const statusEl=document.getElementById("serverBackupStatus");
+  if(statusEl){statusEl.className="rate-status";statusEl.textContent="Sunucuda yedek olusturuluyor...";}
+  try{
+    await apiFetch('/api/backups/create',{method:'POST',headers:apiAdminHeaders()});
+    if(statusEl){statusEl.className="rate-status ok";statusEl.textContent="Sunucu snapshot yedegi olusturuldu.";}
+    await refreshServerBackups();
+  }catch(error){
+    if(statusEl){statusEl.className="rate-status error";statusEl.textContent=`Yedek olusturma hatasi: ${error.message||error}`;}
+  }
+}
+async function restoreServerBackup(id){
+  if(!requireAdmin())return;
+  const backupId=Number(id);
+  if(!backupId)return;
+  if(!confirm(`#${backupId} nolu sunucu yedegi geri yuklensin mi? Mevcut veri once otomatik yedeklenecek.`))return;
+  const typed=prompt("Geri yuklemeyi onaylamak icin GERIYUKLE yazin:");
+  if((typed||"").trim().toUpperCase()!=="GERIYUKLE"){
+    alert("Onay metni dogru girilmedi. Islem iptal edildi.");
+    return;
+  }
+  try{
+    const result=await apiFetch(`/api/backups/restore/${backupId}`,{method:'POST',headers:apiAdminHeaders()});
+    if(result?.data&&typeof result.data==='object'){
+      data=result.data;
+      normalizeData();
+      saveToIndexedDB(data);
+      renderAll();
+      renderSettings();
+    }
+    alert('Sunucu yedegi geri yuklendi.');
+  }catch(error){
+    alert(`Sunucu yedegi geri yuklenemedi: ${error.message||error}`);
+  }
+}
 function exportBackup(){data.meta.lastBackup=new Date().toISOString();audit("Tam yedek alındı",`${data.transactions.length} işlem`);persist();const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`ELECTUS_Finance_Yedek_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);renderSettings()}
 async function importBackup(file){if(!file)return;if(!requireAdmin())return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.transactions)||!Array.isArray(parsed.payments))throw new Error("Geçersiz yedek");if(!confirm("Mevcut veriler yedek dosyasıyla değiştirilsin mi?"))return;data=parsed;normalizeData();audit("Yedek geri yüklendi",file.name);save();alert("Yedek başarıyla geri yüklendi.")}catch(e){alert("Yedek dosyası okunamadı: "+e.message)}}
 function clearAuditLog(){if(!requireAdmin())return;if(confirm("İşlem geçmişi temizlensin mi?")){data.audit=[];audit("İşlem geçmişi temizlendi");save()}}
-function resetAllData(){if(!requireAdmin())return;if(confirm("TÜM finansal veriler silinecek. Emin misiniz?")){const users=data.users,settings=data.settings;data=structuredClone(defaultData);data.users=users;data.settings=settings;audit("Tüm finansal veriler sıfırlandı");save()}}
+function resetAllData(){
+  if(!requireAdmin())return;
+  if(!confirm("TÜM finansal veriler silinecek. Emin misiniz?"))return;
+  const typed=prompt("Bu islemi onaylamak icin SIFIRLA yazin:");
+  if((typed||"").trim().toUpperCase()!=="SIFIRLA"){
+    alert("Onay metni dogru girilmedi. Islem iptal edildi.");
+    return;
+  }
+  const users=data.users,settings=data.settings;
+  data=structuredClone(defaultData);
+  data.users=users;
+  data.settings=settings;
+  audit("Tüm finansal veriler sıfırlandı");
+  save();
+}
 function loadDemoData(){if(!requireAdmin())return;if(!confirm("Örnek veriler mevcut kayıtlara eklensin mi?"))return;const y=2026;[["2026-08-03","Gelir","Electus / Mera",2500,"EUR",53.44],["2026-08-05","Gider","Reklam",42000,"TRY",0],["2026-09-01","Gelir","Nirvana",1800,"EUR",54.1],["2026-09-08","Gider","Eleman",60000,"TRY",0]].forEach((x,i)=>addTransactionRecord({id:uid()+i,date:x[0],type:x[1],category:x[2],reportGroup:x[2],description:"Örnek kayıt",amount:x[3],currency:x[4],exchangeRate:x[5]}));audit("Örnek veriler yüklendi");save()}
 function generateRecurringPayments(){const now=new Date(),limit=new Date(now.getFullYear()+1,now.getMonth(),now.getDate());const sources=data.payments.filter(p=>p.recurrence&&p.recurrence!=="none"&&!p.generatedFrom);for(const src of sources){let d=new Date(src.date+"T00:00:00");while(d<limit){d=src.recurrence==="monthly"?new Date(d.getFullYear(),d.getMonth()+1,d.getDate()):new Date(d.getFullYear()+1,d.getMonth(),d.getDate());if(d>limit)break;const ds=d.toISOString().slice(0,10);if(!data.payments.some(p=>p.generatedFrom===src.id&&p.date===ds)){data.payments.push({...src,id:uid(),date:ds,status:"Bekliyor",generatedFrom:src.id,recurrence:"none"})}}}}
 function comparePreviousPeriod(rows){const y=Number(document.getElementById("annualYear")?.value)||2026;const current=rows.reduce((s,r)=>s+r.net,0);const start=fiscalStart();const keys=Array.from({length:12},(_,i)=>{const m=(start+i)%12,yr=y-1+(m<start?1:0);return `${yr}-${String(m+1).padStart(2,"0")}`});const prev=data.transactions.filter(t=>keys.includes(String(t.date).slice(0,7))).reduce((s,t)=>s+(t.type==="Gelir"?1:-1)*tlValue(t),0);return prev?((current-prev)/Math.abs(prev))*100:null}
