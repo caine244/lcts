@@ -288,12 +288,21 @@
     </section>
 
     <section id="staff-members" class="page">
-      <div class="topbar"><div><h1>Haftalık Üye Sayısı</h1><p>Personel ekranı: Her ayın haftalık üye sayılarını girin</p></div></div>
+      <div class="topbar"><div><h1>Haftalık Üye Sayısı</h1><p>Personel ekranı: Her ayın haftalık üye sayılarını girin</p></div><button class="btn primary" onclick="openStaffPaymentModal()">+ Personel Planlama Ekle</button></div>
       <div class="card">
         <div class="annual-toolbar" style="margin-bottom:12px">
           <div><label>Yıl</label><select id="staffYear" onchange="renderStaffMemberTable()"></select></div>
         </div>
         <div id="staffWeeklyTable"></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="section-title"><h3>Yaklaşan Ödeme & Tahsilatlar (Personel)</h3><span class="badge pending">Yönetici planlamasından ayrı</span></div>
+        <div class="grid cards" style="margin-bottom:14px">
+          <div class="card metric"><div class="label">Bekleyen Tahsilat</div><div class="value" id="staffPendingIncome">₺0</div></div>
+          <div class="card metric"><div class="label">Bekleyen Ödeme</div><div class="value" id="staffPendingExpense">₺0</div></div>
+        </div>
+        <div id="staffUpcomingList" style="margin-bottom:14px"></div>
+        <div id="staffPaymentsTable"></div>
       </div>
     </section>
   </main>
@@ -1189,6 +1198,99 @@ window.renderPerformanceCenter=function(){
     data.settings ||= {};
     data.settings.staffWeeklyMembers ||= {};
   }
+  function ensureStaffPaymentData(){
+    data.settings ||= {};
+    data.settings.staffPaymentsByUser ||= {};
+  }
+  function staffPaymentsForUser(username=currentUser?.username){
+    ensureStaffPaymentData();
+    const key=String(username||'staff').trim()||'staff';
+    const list=Array.isArray(data.settings.staffPaymentsByUser[key])?data.settings.staffPaymentsByUser[key]:[];
+    return list;
+  }
+  function setStaffPaymentsForUser(list,username=currentUser?.username){
+    ensureStaffPaymentData();
+    const key=String(username||'staff').trim()||'staff';
+    data.settings.staffPaymentsByUser[key]=Array.isArray(list)?list:[];
+  }
+  function staffTlValue(obj){
+    const c=obj?.currency||'TRY';
+    const amount=Number(obj?.amount)||0;
+    if(c==='EUR')return amount*(Number(obj?.exchangeRate)||Number(data?.settings?.eurRate)||0);
+    if(c==='USD')return amount*(Number(obj?.exchangeRate)||Number(data?.settings?.usdRate)||0);
+    return amount;
+  }
+  function renderStaffPaymentsPanel(){
+    const tableEl=document.getElementById('staffPaymentsTable');
+    const upcomingEl=document.getElementById('staffUpcomingList');
+    if(!tableEl||!upcomingEl)return;
+    const list=[...staffPaymentsForUser()].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+    const waiting=list.filter(p=>p.status==='Bekliyor');
+    const pendingIncome=waiting.filter(p=>p.type==='Tahsilat').reduce((s,p)=>s+staffTlValue(p),0);
+    const pendingExpense=waiting.filter(p=>p.type==='Ödeme').reduce((s,p)=>s+staffTlValue(p),0);
+    totalBalanceEl('staffPendingIncome',fmt(pendingIncome));
+    totalBalanceEl('staffPendingExpense',fmt(pendingExpense));
+    upcomingEl.innerHTML=waiting.slice(0,4).map(p=>`<div class="account"><div><strong>${escapeHtml(p.title||'-')}</strong><small>${formatDateTR(p.date)} · ${p.type}</small></div><strong class="${p.type==='Tahsilat'?'green':'red'}">${fmtCurrency(p.amount,p.currency||'TRY')}</strong></div>`).join('')||'<div class="empty">Bekleyen personel planlaması yok.</div>';
+    tableEl.innerHTML=`<table><thead><tr><th>Vade</th><th>Tür</th><th>Açıklama</th><th>Tutar</th><th>Durum</th><th>İşlemler</th></tr></thead><tbody>${list.map(p=>`<tr><td>${formatDateTR(p.date)}</td><td><span class="badge ${p.type==='Tahsilat'?'income':'expense'}">${p.type}</span></td><td>${escapeHtml(p.title||'-')}</td><td><strong>${fmtCurrency(p.amount,p.currency||'TRY')}</strong>${(p.currency||'TRY')!=='TRY'?`<small style="display:block;color:var(--muted)">${fmtCurrency(staffTlValue(p))}</small>`:''}</td><td><span class="badge ${p.status==='Bekliyor'?'pending':'paid'}">${p.status}</span></td><td style="display:flex;gap:7px;flex-wrap:wrap"><button class="btn secondary" onclick="toggleStaffPayment(${Number(p.id)||0})">${p.status==='Bekliyor'?'Tamamla':'Geri Al'}</button><button class="btn secondary" onclick="openStaffPaymentModal(${Number(p.id)||0})">Düzenle</button><button class="btn secondary" onclick="deleteStaffPayment(${Number(p.id)||0})">Sil</button></td></tr>`).join('')}</tbody></table>`;
+  }
+  window.openStaffPaymentModal=function(id=null){
+    if(!isStaff())return alert('Bu ekran sadece personel rolü için açıktır.');
+    const list=staffPaymentsForUser();
+    const payment=id?list.find(x=>sameId(x.id,id)):null;
+    const currency=payment?.currency||'TRY';
+    modal(`<h2>${payment?'Personel Planlamasını Düzenle':'Personel Ödeme / Tahsilat Planla'}</h2><div class="grid form-grid"><div><label>Tür</label><select id="spType"><option ${payment?.type==='Ödeme'?'selected':''}>Ödeme</option><option ${payment?.type==='Tahsilat'?'selected':''}>Tahsilat</option></select></div><div><label>Vade Tarihi</label><input id="spDate" type="date" value="${payment?.date||''}"></div><div><label>Açıklama</label><input id="spTitle" value="${escapeHtml(payment?.title||'')}"></div><div><label>Tutar</label><input id="spAmount" type="number" min="0" step="0.01" value="${payment?.amount||''}"></div><div><label>Para Birimi</label><select id="spCurrency" onchange="setCurrencyRateField(this,'spExchangeRate')"><option value="TRY" ${currency==='TRY'?'selected':''}>Türk Lirası (₺)</option><option value="EUR" ${currency==='EUR'?'selected':''}>Euro (€)</option><option value="USD" ${currency==='USD'?'selected':''}>Amerikan Doları ($)</option></select></div><div><label>Döviz / TL Kuru</label><input id="spExchangeRate" type="number" min="0" step="0.0001" value="${payment?.exchangeRate||defaultRateFor(currency)}" ${currency!=='TRY'?'':'disabled'}></div></div><div class="form-actions"><button class="btn secondary" onclick="closeModal()">İptal</button><button class="btn primary" onclick="saveStaffPayment(${id||'null'})">Kaydet</button></div>`);
+  };
+  window.saveStaffPayment=function(id){
+    if(!isStaff())return alert('Bu ekran sadece personel rolü için açıktır.');
+    const date=document.getElementById('spDate')?.value;
+    const amount=Number(document.getElementById('spAmount')?.value||0);
+    if(!date||!amount)return alert('Tarih ve tutar girin.');
+    const currency=document.getElementById('spCurrency')?.value||'TRY';
+    const exchangeRate=currency!=='TRY'?(Number(document.getElementById('spExchangeRate')?.value)||0):0;
+    if(currency!=='TRY'&&!exchangeRate)return alert('Döviz kuru girin.');
+    const values={
+      type:document.getElementById('spType')?.value||'Ödeme',
+      date,
+      title:(document.getElementById('spTitle')?.value||'-').trim()||'-',
+      amount,
+      currency,
+      exchangeRate
+    };
+    const list=[...staffPaymentsForUser()];
+    if(id){
+      const row=list.find(x=>sameId(x.id,id));
+      if(!row)return;
+      Object.assign(row,values);
+      audit('Personel planlaması düzenlendi',`${row.date} · ${row.type} · ${row.title}`);
+    }else{
+      const row={id:uid(),...values,status:'Bekliyor'};
+      list.push(row);
+      audit('Personel planlaması eklendi',`${row.date} · ${row.type} · ${row.title}`);
+    }
+    setStaffPaymentsForUser(list);
+    closeModal();
+    save();
+  };
+  window.toggleStaffPayment=function(id){
+    if(!isStaff())return alert('Bu ekran sadece personel rolü için açıktır.');
+    const list=[...staffPaymentsForUser()];
+    const row=list.find(x=>sameId(x.id,id));
+    if(!row)return;
+    row.status=row.status==='Bekliyor'?'Tamamlandı':'Bekliyor';
+    setStaffPaymentsForUser(list);
+    audit(row.status==='Tamamlandı'?'Personel planlaması tamamlandı':'Personel planlaması geri alındı',`${row.date} · ${row.title}`);
+    save();
+  };
+  window.deleteStaffPayment=function(id){
+    if(!isStaff())return alert('Bu ekran sadece personel rolü için açıktır.');
+    if(!confirm('Bu personel planlamasını silmek istediğinize emin misiniz?'))return;
+    const list=[...staffPaymentsForUser()];
+    const row=list.find(x=>sameId(x.id,id));
+    if(!row)return;
+    setStaffPaymentsForUser(list.filter(x=>!sameId(x.id,id)));
+    audit('Personel planlaması silindi',`${row.date} · ${row.type} · ${row.title}`);
+    save();
+  };
   function monthKey(year,monthIndex){return `${year}-${String(monthIndex+1).padStart(2,'0')}`;}
   function getWeekValues(key){
     const raw=Array.isArray(data.settings.staffWeeklyMembers[key])?data.settings.staffWeeklyMembers[key]:[];
@@ -1289,6 +1391,7 @@ window.renderPerformanceCenter=function(){
   renderAll=function(){
     _renderAll();
     renderStaffMemberTable();
+    renderStaffPaymentsPanel();
     if(isStaff())showPage('staff-members');
   };
 })();
